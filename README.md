@@ -169,7 +169,7 @@ xcodebuild -project LCSignClone.xcodeproj -scheme LCSignClone \
 ```
 
 **明确不做**（留到后续阶段）：越狱注入、本地 HTTP/WebDAV 服务、
-plist 树形编辑器、软件源解析、备份格式、插件系统、灵动岛、自更新。
+plist 树形编辑器、备份格式、插件系统、灵动岛、自更新。
 
 ### 装到设备后，先点一次「诊断」
 
@@ -230,8 +230,8 @@ plist 树形编辑器、软件源解析、备份格式、插件系统、灵动�
 三个界面：
 
 - **首页** —— 顶部状态板（证书数 / 记录数 / 引擎健康度）+ 主操作按钮 +
-  快捷方块 + 当前证书 + 签名记录卡片流。签名记录卡上直接给出产物大小、
-  用时、压缩比和导出按钮；失败的任务卡内联显示错误原因并给「重试」。
+  软件源入口 + 快捷方块 + 当前证书 + 签名记录卡片流。签名记录卡上直接给出
+  产物大小、用时、压缩比和导出按钮；失败的任务卡内联显示错误原因并给「重试」。
 - **重签名页** —— 「选包 → 选证书 → 执行」三段式，可选改写（Bundle ID /
   显示名称）折叠起来。证书不可用时把原因直接写在选项上，而不是让按钮
   默默点不动。
@@ -241,6 +241,70 @@ plist 树形编辑器、软件源解析、备份格式、插件系统、灵动�
 > 复制报告这个功能是补课补出来的：之前排查一次真机崩溃，来回好几轮都在
 > 靠用户口述界面上的文字。把页面上的信息一次性变成可粘贴的文本，
 > 比任何措辞上的优化都省事。
+
+### 3.2 软件源
+
+首页「软件源」入口 → 添加 HTTPS 源地址 → 浏览应用 → 下载 → 自动带进重签名页。
+
+首次启动会自动订阅内置源（`AppModel.builtInSourceAddresses`，默认
+`https://ipa.ipaioscc.cn/appstore`），装好就有内容，不用手动输入。订阅成功后才写
+`didSeedBuiltInSources` 标记，之后用户主动删掉不会再自动加回来；加载失败则下次启动重试。
+
+解析按**同义字段表**取值，而不是固定的 Codable 结构。这类源没有统一规范，
+同一个含义在不同源里写法不同（`url` / `downloadURL` / `appPackage`，
+`icon` / `appImage` …），严格结构遇到新变体就会整源加载失败。
+
+| 层级 | 字段（任意一个存在即可） |
+|---|---|
+| 源名称 | `name` / `sourceName` / `title` |
+| 源图标 | `icon` / `iconURL` / `sourceicon` / `sourceImage` |
+| 应用列表 | `apps` / `appRepositories` / `data`（对象或数组） |
+| 应用名 | `name` / `appName` / `title` |
+| 包名 | `bundleIdentifier` / `bundleID` / `bundleid` / `appBundleId` |
+| 版本 | `version` / `appVersion` / `versionName` |
+| 图标 | `icon` / `iconURL` / `appImage` |
+| 下载地址 | `url` / `downloadURL` / `downloadUrl` / `appPackage` / `ipa` |
+| 大小 | `size` / `appSize` / `fileSize` |
+| 说明 | `description` / `desc` / `appDescription` / `versionDescription` |
+| 开发者 | `developer` / `developerName` / `author` |
+
+最小可用示例：
+
+```json
+{
+  "name": "我的源",
+  "icon": "https://cdn.example.com/source.png",
+  "apps": [
+    {
+      "name": "示例应用",
+      "bundleid": "com.example.demo",
+      "version": "1.0.0",
+      "icon": "https://cdn.example.com/demo.png",
+      "url": "https://cdn.example.com/demo.ipa",
+      "size": 12345678
+    }
+  ]
+}
+```
+
+边界：
+
+- **只接受 HTTPS**：源地址和下载地址都必须是 https。http 地址在添加或下载前
+  就会被拒绝 —— 清单与 IPA 都来自网络，明文链路等于把安装包交给中间人替换。
+- **不做解锁 / 兑换**：原版 LCSign 的 UDID 兑换属于它的商业逻辑，这里没有。
+  加密源（返回 `{"appstore": "..."}` 这类密文）也不支持。
+- **刷新失败保留缓存**：源挂掉时列表照样能看，错误内联显示在源标题下。
+- **下载只校验 ZIP 魔数**：能挡住「404 页面被当成 IPA」；包内部是否完整
+  仍由签名流程和 `30_verify_bundle.py` 负责。
+- 下载的 IPA 落在临时目录，重签时再复制进任务目录；App 重启后系统可能清理它。
+- 源里给的图标若是 http，受 ATS 限制不会加载，界面回退到占位图标。
+- 单个应用如果只有 http 下载地址，会照常出现在列表里（带 HTTP 标记），但下载按钮禁用；
+  不要为了「能下」放开这一条，明文链路可以被替换成任意 IPA。
+- 全能签源（如 `https://ipa.ipaioscc.cn/appstore`）的接口返回 `Content-Type: text/html`，
+  但内容是 JSON。这里刻意**不校验** Content-Type，只按 JSON 解析 —— HTTP 头来自服务器，
+  内容才是事实。
+- 下载地址常是 302 跳转到签名 CDN，`URLSession` 会自动跟随；源里的 `lock` / `unlockURL` /
+  `payURL` 属于商业兑换逻辑，这里不解析也不展示。
 
 ---
 
@@ -264,6 +328,7 @@ LCSignClone/
 │       ├── SigningCertificateTests.swift
 │       ├── IPAArchiveTests.swift     含 zip slip 防护
 │       ├── ZipWriterTests.swift      打包往返：多块文件 / 空文件 / 中文名 / 进度
+│       ├── AppSourceTests.swift      软件源容错解析（多种字段写法）
 │       └── EngineSelfTestTests.swift 真跑一遍 ad-hoc 签名
 └── Sources/
     ├── LCSignClone/                  UI 层（iOS App target）
@@ -272,9 +337,11 @@ LCSignClone/
     │   ├── DesignSystem.swift        设计令牌（颜色/间距/字号）+ 通用组件
     │   ├── AppModel.swift            界面状态与签名任务编排
     │   └── Views/
-    │       ├── HomeView.swift        首页：状态板 + 主操作 + 签名记录
+    │       ├── HomeView.swift        首页：状态板 + 主操作 + 软件源 + 签名记录
     │       ├── SignSheet.swift       重签名页
     │       ├── CertificateRow.swift  证书行 / 证书库 / 导入证书
+    │       ├── SourcesView.swift     软件源列表 / 添加 / 刷新 / 删除
+    │       ├── SourceAppDetailView.swift 源内应用详情 + 下载并签名
     │       └── DiagnosticsView.swift 诊断页：引擎自检 + 环境 + 复制报告
     └── LCSignCore/                   核心层（framework target）
         ├── SigningRequest.swift      签名参数模型
@@ -285,6 +352,9 @@ LCSignClone/
         ├── ProvisioningProfile.swift 描述文件解析 + 授权比对
         ├── IPAArchive.swift          IPA 解包/打包
         ├── ZipWriter.swift           手写的 O(n) ZIP 写入器（打包用）
+        ├── AppSource.swift           软件源模型 + 同义字段容错解析
+        ├── SourceService.swift       HTTPS 拉清单 / 下载 IPA（进度、ZIP 校验）
+        ├── SourceStore.swift         软件源本地缓存
         ├── EngineSelfTest.swift      不依赖证书的引擎自检
         ├── include/
         │   ├── LCSignCore.h          伞形头文件（umbrella header）

@@ -12,6 +12,13 @@ struct SignSheet: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
 
+    /// 从软件源下载完直接带进来的 IPA
+    private let initialIPA: URL?
+
+    init(initialIPA: URL? = nil) {
+        self.initialIPA = initialIPA
+    }
+
     @State private var selectedIPA: URL?
     @State private var selectedCertificate: SigningCertificate?
     @State private var bundleID = ""
@@ -335,10 +342,15 @@ struct SignSheet: View {
                 ?? model.usableCertificates.first
                 ?? model.certificates.first
         }
-        // 从分享菜单投递进来的 IPA
-        if selectedIPA == nil, let pending = model.pendingIPA {
-            selectedIPA = pending
-            model.pendingIPA = nil
+        if selectedIPA == nil {
+            if let initialIPA {
+                selectedIPA = initialIPA
+                model.pendingIPA = nil
+            } else if let pending = model.pendingIPA {
+                // 从分享菜单投递进来的 IPA
+                selectedIPA = pending
+                model.pendingIPA = nil
+            }
         }
     }
 

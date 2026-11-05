@@ -75,6 +75,14 @@ final class AppModel: ObservableObject {
     @Published var alert: AlertPayload?
     @Published var lastSelfTest: SelfTestRecord?
 
+    // 软件源
+    @Published var sources: [AppSource] = []
+    /// 按源 id 记录上次刷新失败的原因；有缓存时列表照常展示
+    @Published var sourceErrors: [String: String] = [:]
+    @Published var refreshingSourceIDs: Set<String> = []
+    @Published var downloadingAppID: String?
+    @Published var downloadFraction: Double = 0
+
     /// 从其他 App 通过分享菜单投递进来的 IPA，等用户在签名界面确认
     @Published var pendingIPA: URL?
 
@@ -89,9 +97,19 @@ final class AppModel: ObservableObject {
 
     private let store = CertificateStore.shared
     private let service = SigningService()
+    private let sourceStore = SourceStore.shared
+    private let sourceService = SourceService()
 
     private static let selfTestKey = "lastSelfTestRecord"
     private static let preferredCertificateKey = "preferredCertificateID"
+
+    /// 内置软件源，首次启动自动订阅，装好就能直接浏览
+    private static let builtInSourceAddresses = [
+        "https://ipa.ipaioscc.cn/appstore"
+    ]
+
+    /// 订阅成功后才写标记：用户后来把源删了，不该每次启动又塞回来
+    private static let builtInSourcesSeededKey = "didSeedBuiltInSources"
 
     init() {
         lastSelfTest = Self.loadSelfTestRecord()
@@ -105,6 +123,10 @@ final class AppModel: ObservableObject {
 
     var usableCertificates: [SigningCertificate] {
         certificates.filter(\.isUsable)
+    }
+
+    var sourceAppCount: Int {
+        sources.reduce(0) { $0 + $1.apps.count }
     }
 
     // MARK: - 证书
@@ -318,6 +340,110 @@ final class AppModel: ObservableObject {
         try? FileManager.default.removeItem(at: input)
     }
 
+    // MARK: - 软件源
+
+    /// 先读本地缓存，保证断网也能看到上次的列表
+    func loadSources() async {
+        sources = (try? await sourceStore.all()) ?? []
+        await seedBuiltInSourcesIfNeeded()
+    }
+
+    /// 首次启动自动订阅内置源。
+    ///
+    /// 加载失败不写标记，下次启动重试；已经订阅过或用户手动加过同地址的直接算完成。
+    private func seedBuiltInSourcesIfNeeded() async {
+        guard !UserDefaults.standard.bool(forKey: Self.builtInSourcesSeededKey) else { return }
+
+        var allHandled = true
+        for raw in Self.builtInSourceAddresses {
+            guard let url = SourceService.normalizeSourceURL(raw) else {
+                allHandled = false
+                continue
+            }
+            if sources.contains(where: { $0.url == url }) { continue }
+
+            do {
+                let source = try await sourceService.load(url: url)
+                try await sourceStore.add(source)
+                sources = try await sourceStore.all()
+            } catch {
+                allHandled = false
+            }
+        }
+
+        if allHandled {
+            UserDefaults.standard.set(true, forKey: Self.builtInSourcesSeededKey)
+        }
+    }
+
+    func addSource(_ raw: String) async throws {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.lowercased().hasPrefix("http://") {
+            throw SourceError.insecureURL(trimmed)
+        }
+        guard let url = SourceService.normalizeSourceURL(trimmed) else {
+            throw SourceError.invalidAddress(trimmed)
+        }
+        let source = try await sourceService.load(url: url)
+        try await sourceStore.add(source)
+        sources = try await sourceStore.all()
+    }
+
+    func refresh(_ source: AppSource) async {
+        guard !refreshingSourceIDs.contains(source.id) else { return }
+        refreshingSourceIDs.insert(source.id)
+        defer { refreshingSourceIDs.remove(source.id) }
+
+        do {
+            let updated = try await sourceService.load(url: source.url)
+            try await sourceStore.add(updated)
+            sources = try await sourceStore.all()
+            sourceErrors[source.id] = nil
+        } catch {
+            // 刷新失败不清空列表：旧缓存比空白页有用
+            sourceErrors[source.id] = Self.message(for: error)
+        }
+    }
+
+    func refreshAllSources() async {
+        // 串行刷新：源多时并发会把网络和界面状态一起搞乱，收益不值当
+        for source in sources {
+            await refresh(source)
+        }
+    }
+
+    func removeSource(_ source: AppSource) async {
+        do {
+            try await sourceStore.remove(url: source.url)
+            sources = try await sourceStore.all()
+            sourceErrors[source.id] = nil
+        } catch {
+            alert = AlertPayload(title: "删除失败", message: Self.message(for: error))
+        }
+    }
+
+    /// 下载源里的 IPA 到临时目录。只允许同时下载一个，进度是全局的。
+    func download(_ app: SourceApp) async throws -> URL {
+        guard downloadingAppID == nil else {
+            throw SourceError.downloadFailed("已有下载任务在进行")
+        }
+
+        // 用下载地址而不是 Bundle ID 做键：同一个应用可能同时挂在多个源里，
+        // 只按 Bundle ID 比对会让另一个源的详情页误以为自己在下载
+        downloadingAppID = app.downloadURL.absoluteString
+        downloadFraction = 0
+        defer {
+            downloadingAppID = nil
+            downloadFraction = 0
+        }
+
+        return try await sourceService.download(app.downloadURL) { [weak self] fraction in
+            Task { @MainActor in
+                self?.downloadFraction = fraction
+            }
+        }
+    }
+
     // MARK: - 引擎自检
 
     /// 跑一次自检并把结果持久化。首页据此显示健康状态。
@@ -356,11 +482,14 @@ final class AppModel: ObservableObject {
     }
 
     private func present(_ error: Error, title: String) {
-        let message = (error as? LocalizedError)?.errorDescription
-                   ?? error.localizedDescription
+        let message = Self.message(for: error)
         let suggestion = (error as? LocalizedError)?.recoverySuggestion
         alert = AlertPayload(title: title,
                              message: suggestion.map { "\(message)\n\n\($0)" } ?? message)
+    }
+
+    private static func message(for error: Error) -> String {
+        (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
     }
 
     /// 把沙盒外的文件复制到 App 容器内。

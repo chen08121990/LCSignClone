@@ -137,7 +137,8 @@ targets:
         # 1 = 首个可安装包
         # 2 = 修掉 OpenSSL 动态框架没嵌进包导致的启动闪退
         # 3 = 界面重做 + 打包改成 O(n) + 修掉真机自检「解包 IPA」误报
-        CFBundleVersion: "3"
+        # 4 = 软件源：添加/刷新源，下载 IPA 后直接进入重签名
+        CFBundleVersion: "4"
         UILaunchScreen: {}
         UIRequiredDeviceCapabilities:
           - arm64

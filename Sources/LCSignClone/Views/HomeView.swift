@@ -13,7 +13,7 @@ struct HomeView: View {
     @State private var activeSheet: ActiveSheet?
 
     private enum ActiveSheet: String, Identifiable {
-        case sign, certificates, diagnostics
+        case sign, certificates, diagnostics, sources
         var id: String { rawValue }
     }
 
@@ -22,12 +22,14 @@ struct HomeView: View {
             .navigationViewStyle(.stack)
             .task {
                 await model.refreshCertificates()
+                await model.loadSources()
             }
             .sheet(item: $activeSheet) { sheet in
                 switch sheet {
                 case .sign:         SignSheet()
                 case .certificates: CertificateListView()
                 case .diagnostics:  DiagnosticsView()
+                case .sources:      SourcesView()
                 }
             }
             .alert(
@@ -58,6 +60,7 @@ struct HomeView: View {
                 VStack(spacing: Metric.Space.l) {
                     StatusBoard(model: model)
                     primaryAction
+                    sourcesAction
                     quickTiles
 
                     if let certificate = featuredCertificate {
@@ -143,6 +146,51 @@ struct HomeView: View {
         if model.certificates.isEmpty { return "还没有证书，先导入 p12 与描述文件" }
         if model.usableCertificates.isEmpty { return "现有证书不可用，请检查有效期与配对情况" }
         return "当前证书：\(featuredCertificate?.displayName ?? "—")"
+    }
+
+    // MARK: - 软件源入口
+
+    private var sourcesAction: some View {
+        Button {
+            activeSheet = .sources
+        } label: {
+            Card(padding: Metric.Space.m, fill: Brand.accentSoft) {
+                HStack(spacing: Metric.Space.m) {
+                    IconBadge(symbol: "globe.asia.australia.fill",
+                              tint: Brand.accent,
+                              size: 42)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("软件源")
+                            .font(Typo.cardTitle)
+                            .foregroundColor(.primary)
+
+                        Text(sourceSubtitle)
+                            .font(Typo.caption)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: Metric.Space.s)
+
+                    if model.sourceAppCount > 0 {
+                        StatusPill(text: "\(model.sourceAppCount) 个应用", tint: Brand.accent)
+                    }
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var sourceSubtitle: String {
+        if model.sources.isEmpty {
+            return "添加轻松签/全能签源，下载 IPA 直接重签"
+        }
+        return "\(model.sources.count) 个源 · 共 \(model.sourceAppCount) 个应用"
     }
 
     // MARK: - 快捷入口
