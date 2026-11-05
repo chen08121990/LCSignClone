@@ -19,6 +19,7 @@ struct SourcesView: View {
                 VStack(spacing: Metric.Space.l) {
                     if model.sources.isEmpty {
                         emptyState
+                        buildStamp
                     } else {
                         ForEach(model.sources) { source in
                             SourceSection(
@@ -147,6 +148,15 @@ struct SourcesView: View {
                 }
             }
         }
+    }
+
+    /// 空状态时显示版本号：装的是哪一个包，一眼就能对上
+    private var buildStamp: some View {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+        return Text("版本 \(version) (\(build))")
+            .font(Typo.micro)
+            .foregroundColor(.secondary)
     }
 
     private var footer: some View {
