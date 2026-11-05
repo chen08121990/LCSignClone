@@ -185,7 +185,7 @@ final class AppSourceTests: XCTestCase {
     // MARK: - 错误
 
     func testRejectsNonJSON() {
-        assertSourceError(SourceParser.parse(Data("<html></html>".utf8), sourceURL: baseURL)) {
+        assertSourceError(try SourceParser.parse(Data("<html></html>".utf8), sourceURL: baseURL)) {
             if case .invalidJSON = $0 { return true }
             return false
         }
@@ -193,7 +193,7 @@ final class AppSourceTests: XCTestCase {
 
     func testRejectsSourceWithoutApps() {
         let json = #"{ "name": "空源" }"#
-        assertSourceError(SourceParser.parse(Data(json.utf8), sourceURL: baseURL)) {
+        assertSourceError(try SourceParser.parse(Data(json.utf8), sourceURL: baseURL)) {
             if case .missingApps = $0 { return true }
             return false
         }
@@ -201,7 +201,7 @@ final class AppSourceTests: XCTestCase {
 
     func testRejectsSourceWhereEveryAppIsInvalid() {
         let json = #"{ "name": "无效源", "apps": [ { "name": "只有名字" } ] }"#
-        assertSourceError(SourceParser.parse(Data(json.utf8), sourceURL: baseURL)) {
+        assertSourceError(try SourceParser.parse(Data(json.utf8), sourceURL: baseURL)) {
             if case .noApps = $0 { return true }
             return false
         }
