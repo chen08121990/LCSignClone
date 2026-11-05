@@ -108,7 +108,7 @@ final class AppModel: ObservableObject {
 
     /// 内置软件源，首次启动自动订阅，装好就能直接浏览
     private static let builtInSourceAddresses = [
-        "https://ipa.ipaioscc.cn/appstore"
+        "https://rjy.ipaioscc.cn/appstore"
     ]
 
     /// 订阅成功后才写标记：用户后来把源删了，不该每次启动又塞回来
