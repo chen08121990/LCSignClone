@@ -248,7 +248,8 @@ plist 树形编辑器、备份格式、插件系统、灵动岛、自更新。
 
 首次启动会自动订阅内置源（`AppModel.builtInSourceAddresses`，默认
 `https://ipa.ipaioscc.cn/appstore`），装好就有内容，不用手动输入。订阅成功后才写
-`didSeedBuiltInSources` 标记，之后用户主动删掉不会再自动加回来；加载失败则下次启动重试。
+`didSeedBuiltInSources` 标记，之后用户主动删掉不会再自动加回来；失败会重试三次，
+并且下次启动、打开软件源页面时继续重试，失败原因直接显示在空状态里，不再是静默空列表。
 
 解析按**同义字段表**取值，而不是固定的 Codable 结构。这类源没有统一规范，
 同一个含义在不同源里写法不同（`url` / `downloadURL` / `appPackage`，

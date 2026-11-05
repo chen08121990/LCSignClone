@@ -59,6 +59,12 @@ struct SourcesView: View {
             }
         }
         .navigationViewStyle(.stack)
+        .task {
+            // 首次订阅可能在上次启动时失败了；打开这个页面时再试一次
+            if model.sources.isEmpty {
+                await model.loadSources()
+            }
+        }
     }
 
     private var isShowingDeletion: Binding<Bool> {
@@ -96,20 +102,49 @@ struct SourcesView: View {
 
     // MARK: - 内容
 
+    @ViewBuilder
     private var emptyState: some View {
-        Card {
-            EmptyState(
-                symbol: "globe.asia.australia.fill",
-                title: "还没有软件源",
-                message: "添加轻松签/全能签格式的 HTTPS 源地址，"
-                       + "就能在 App 内挑选 IPA 并直接重签名。"
-            ) {
-                Button {
-                    showingAdd = true
-                } label: {
-                    Label("添加软件源", systemImage: "plus")
+        if model.isSeedingBuiltInSources {
+            Card {
+                VStack(spacing: Metric.Space.s) {
+                    ProgressView()
+                    Text("正在订阅内置软件源…")
+                        .font(Typo.caption)
+                        .foregroundColor(.secondary)
                 }
-                .buttonStyle(PrimaryActionStyle(compact: true))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, Metric.Space.xxl)
+            }
+        } else if let error = model.builtInSeedError {
+            Card {
+                EmptyState(
+                    symbol: "exclamationmark.triangle.fill",
+                    title: "内置软件源订阅失败",
+                    message: error
+                ) {
+                    Button {
+                        Task { await model.loadSources() }
+                    } label: {
+                        Label("重试", systemImage: "arrow.clockwise")
+                    }
+                    .buttonStyle(PrimaryActionStyle(compact: true))
+                }
+            }
+        } else {
+            Card {
+                EmptyState(
+                    symbol: "globe.asia.australia.fill",
+                    title: "还没有软件源",
+                    message: "添加轻松签/全能签格式的 HTTPS 源地址，"
+                           + "就能在 App 内挑选 IPA 并直接重签名。"
+                ) {
+                    Button {
+                        showingAdd = true
+                    } label: {
+                        Label("添加软件源", systemImage: "plus")
+                    }
+                    .buttonStyle(PrimaryActionStyle(compact: true))
+                }
             }
         }
     }

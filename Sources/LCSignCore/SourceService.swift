@@ -11,6 +11,16 @@ public actor SourceService {
     /// 又能拦住「把 IPA 当源地址填进来」这类误操作。
     private static let maximumSourceBytes: Int = 20 * 1024 * 1024
 
+    /// 刚装好 App 时 Wi‑Fi 可能还没连上：让它等网络，而不是立刻失败。
+    /// 总时长仍有限制，避免断网时任务一直挂着。
+    private let session: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 30
+        configuration.timeoutIntervalForResource = 120
+        configuration.waitsForConnectivity = true
+        return URLSession(configuration: configuration)
+    }()
+
     public init() {}
 
     // MARK: - 地址
@@ -52,7 +62,7 @@ public actor SourceService {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await session.data(for: request)
         } catch let error as URLError {
             throw SourceError.network(error.localizedDescription)
         } catch {

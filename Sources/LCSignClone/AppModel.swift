@@ -79,6 +79,9 @@ final class AppModel: ObservableObject {
     @Published var sources: [AppSource] = []
     /// 按源 id 记录上次刷新失败的原因；有缓存时列表照常展示
     @Published var sourceErrors: [String: String] = [:]
+    /// 首次启动订阅内置源的进度与失败原因，让空列表不再「无声」
+    @Published var isSeedingBuiltInSources = false
+    @Published var builtInSeedError: String?
     @Published var refreshingSourceIDs: Set<String> = []
     @Published var downloadingAppID: String?
     @Published var downloadFraction: Double = 0
@@ -350,30 +353,55 @@ final class AppModel: ObservableObject {
 
     /// 首次启动自动订阅内置源。
     ///
-    /// 加载失败不写标记，下次启动重试；已经订阅过或用户手动加过同地址的直接算完成。
+    /// 刚装好时网络未必就绪，一次失败就永久空列表不行：这里重试三次，
+    /// 失败原因留给软件源页展示，下次启动也会重来。
     private func seedBuiltInSourcesIfNeeded() async {
         guard !UserDefaults.standard.bool(forKey: Self.builtInSourcesSeededKey) else { return }
+        guard !isSeedingBuiltInSources else { return }
 
-        var allHandled = true
+        isSeedingBuiltInSources = true
+        builtInSeedError = nil
+        defer { isSeedingBuiltInSources = false }
+
+        var failures: [String] = []
         for raw in Self.builtInSourceAddresses {
             guard let url = SourceService.normalizeSourceURL(raw) else {
-                allHandled = false
+                failures.append("\(raw) 不是有效的 HTTPS 地址")
                 continue
             }
+            // 用户已经手动加过同一个地址，直接算完成，不再重复拉取
             if sources.contains(where: { $0.url == url }) { continue }
 
             do {
-                let source = try await sourceService.load(url: url)
+                let source = try await loadBuiltInSource(url)
                 try await sourceStore.add(source)
                 sources = try await sourceStore.all()
             } catch {
-                allHandled = false
+                failures.append(error.localizedDescription)
             }
         }
 
-        if allHandled {
+        if failures.isEmpty {
             UserDefaults.standard.set(true, forKey: Self.builtInSourcesSeededKey)
+        } else {
+            builtInSeedError = failures.joined(separator: "\n")
         }
+    }
+
+    /// 首次订阅给三次机会，避免启动瞬间网络未就绪就永久失败
+    private func loadBuiltInSource(_ url: URL) async throws -> AppSource {
+        var lastError: Error = SourceError.network("未知错误")
+        for attempt in 0..<3 {
+            do {
+                return try await sourceService.load(url: url)
+            } catch {
+                lastError = error
+                if attempt < 2 {
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                }
+            }
+        }
+        throw lastError
     }
 
     func addSource(_ raw: String) async throws {
