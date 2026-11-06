@@ -236,7 +236,7 @@ struct SignSheet: View {
                             title: "Bundle ID",
                             placeholder: "留空则保持原值",
                             text: $bundleID,
-                            note: "必须落在描述文件的 App ID 覆盖范围内，否则签出来的包装不上。"
+                            note: "留空则自动使用描述文件允许的 App ID；固定 App ID 的证书会把包名改写成它。"
                         )
 
                         Divider().background(Brand.hairline)

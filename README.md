@@ -316,6 +316,9 @@ plist 树形编辑器、备份格式、插件系统、灵动岛、自更新。
 - 只做一次：导入成功才写 `didImportBuiltInCertificate`，用户主动删掉不会再加回来。
 - 覆盖安装后标记丢失时按 Team ID 去重，不会重复导入。
 - 导入失败会清空标记、下次启动重试，原因显示在证书库页顶部。
+- 这张描述文件是**固定 App ID**（`B8BGPMF2XK.hk.com.hsbc.enterprise.hsbchkrewards.local2`），
+  签别的应用时签名流程会自动把目标包名改写成它 —— 不改写 iOS 一定拒装。
+  代价是所有用这张证书签的包共用同一个包名，后装的会覆盖先装的。
 
 > **这份内置身份已被 Apple 吊销**（OCSP `revoked`，`certificateHold`）。
 > 用它签出来的 App 无法安装或启动。另外私钥和密码随 IPA 一起分发，

@@ -75,16 +75,26 @@ public actor SigningService {
         }
 
         let targetBundleID = request.bundleID ?? contents.bundleID
+        // 真正写给 zsign 的包名。固定 App ID 的描述文件会把目标包名改写成它。
+        var signingBundleID = request.bundleID
 
         if let profile {
             if profile.isExpired {
                 throw SigningError.profileExpired(profile.expirationDate)
             }
             if !profile.covers(bundleID: targetBundleID) {
-                throw SigningError.bundleIDNotCovered(
-                    bundleID: targetBundleID,
-                    profileAppID: profile.applicationIdentifier
-                )
+                // 固定 App ID 的描述文件（企业证书常见）只认它自己那一个包名：
+                // 不改写就一定装不上，改写是唯一能出包的路径，所以直接改，
+                // 而不是报错让用户去猜该填什么。
+                guard let fixedBundleID = profile.fixedBundleID else {
+                    throw SigningError.bundleIDNotCovered(
+                        bundleID: targetBundleID,
+                        profileAppID: profile.applicationIdentifier
+                    )
+                }
+                report(onProgress, .inspecting, 0.3,
+                       "包名改为描述文件的 App ID：\(fixedBundleID)")
+                signingBundleID = fixedBundleID
             }
         }
 
@@ -126,7 +136,7 @@ public actor SigningService {
             p12Password: password,
             provisionPath: request.provision?.path,
             entitlementsPath: request.entitlements?.path,
-            bundleId: request.bundleID,
+            bundleId: signingBundleID,
             bundleVersion: request.bundleVersion,
             displayName: request.displayName,
             iconFile: request.iconFile?.path,

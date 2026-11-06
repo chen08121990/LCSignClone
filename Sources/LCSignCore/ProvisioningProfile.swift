@@ -50,6 +50,12 @@ public struct ProvisioningProfile: @unchecked Sendable {
         return pattern == "*" || pattern.hasSuffix(".*")
     }
 
+    /// 固定 App ID 对应的唯一下载包名（去掉 Team 前缀）。
+    /// 通配符描述文件返回 nil —— 那种情况下包名由调用方决定。
+    public var fixedBundleID: String? {
+        isWildcard ? nil : appIDPattern
+    }
+
     // MARK: - 覆盖性校验
 
     /// 描述文件的 App ID 能否覆盖指定的 Bundle ID。

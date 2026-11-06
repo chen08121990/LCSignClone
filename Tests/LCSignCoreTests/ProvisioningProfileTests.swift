@@ -20,6 +20,8 @@ final class ProvisioningProfileTests: XCTestCase {
         XCTAssertFalse(profile.covers(bundleID: "com.example"))
         XCTAssertFalse(profile.isWildcard)
         XCTAssertEqual(profile.appIDPattern, "com.example.app")
+        // 固定 App ID：签名时目标包名只能改成它
+        XCTAssertEqual(profile.fixedBundleID, "com.example.app")
     }
 
     func testPrefixWildcardCoversSubdomains() throws {
@@ -29,6 +31,7 @@ final class ProvisioningProfileTests: XCTestCase {
 
         XCTAssertTrue(profile.isWildcard)
         XCTAssertEqual(profile.appIDPattern, "com.example.*")
+        XCTAssertNil(profile.fixedBundleID)
 
         XCTAssertTrue(profile.covers(bundleID: "com.example.app"))
         XCTAssertTrue(profile.covers(bundleID: "com.example.a.b"))
