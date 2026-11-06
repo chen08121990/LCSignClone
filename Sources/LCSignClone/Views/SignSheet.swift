@@ -27,6 +27,7 @@ struct SignSheet: View {
     @State private var showingIPAPicker = false
     @State private var showingAdvanced = false
     @State private var isSigning = false
+    @State private var pickerError: String?
 
     var body: some View {
         NavigationView {
@@ -52,12 +53,31 @@ struct SignSheet: View {
             .safeAreaInset(edge: .bottom) { actionBar }
             .fileImporter(
                 isPresented: $showingIPAPicker,
-                allowedContentTypes: [.ipaArchive],
+                // 不要按 ipa 的 UTI 过滤：iOS 没有系统级的 ipa 类型，
+                // 从别的 App 存进来的 .ipa 会被判成动态类型，文件选择器会把它们全部置灰。
+                // 放开成 .data，选完再按扩展名拦。
+                allowedContentTypes: [.data],
                 allowsMultipleSelection: false
             ) { result in
-                if case .success(let urls) = result, let url = urls.first {
+                switch result {
+                case .success(let urls):
+                    guard let url = urls.first else { return }
+                    guard url.pathExtension.lowercased() == "ipa" else {
+                        pickerError = "只能选 .ipa 文件，收到的是 .\(url.pathExtension)。"
+                        return
+                    }
                     selectedIPA = url
+                case .failure(let error):
+                    // 用户取消也可能走到这里，那不是错误，不弹提示
+                    if (error as NSError).code != NSUserCancelledError {
+                        pickerError = error.localizedDescription
+                    }
                 }
+            }
+            .alert("无法选择文件", isPresented: isShowingPickerError) {
+                Button("好", role: .cancel) {}
+            } message: {
+                Text(pickerError ?? "")
             }
             .onAppear(perform: prepareSelection)
         }
@@ -352,6 +372,13 @@ struct SignSheet: View {
                 model.pendingIPA = nil
             }
         }
+    }
+
+    private var isShowingPickerError: Binding<Bool> {
+        Binding(
+            get: { pickerError != nil },
+            set: { if !$0 { pickerError = nil } }
+        )
     }
 
     private var canSign: Bool {

@@ -622,11 +622,6 @@ final class AppModel: ObservableObject {
 // MARK: - 文件类型
 
 extension UTType {
-    /// 有些系统没注册 ipa 类型，这里兜底
-    static var ipaArchive: UTType {
-        UTType(filenameExtension: "ipa") ?? .data
-    }
-
     static var pkcs12: UTType {
         UTType(filenameExtension: "p12") ?? .data
     }
