@@ -324,6 +324,48 @@ plist 树形编辑器、备份格式、插件系统、灵动岛、自更新。
 > 用它签出来的 App 无法安装或启动。另外私钥和密码随 IPA 一起分发，
 > 等于公开了这张证书 —— 需要可用的包请自行导入自己的证书。
 
+### 3.4 安装到桌面（OTA）
+
+签名成功后，任务卡上除了「导出 IPA」还有「安装到桌面」：
+把产物和一份 `manifest.plist` 传到自己的 HTTPS 服务器，
+再把 `itms-services://?action=download-manifest&url=…` 交给系统安装器，
+iOS 会像正常下载一样把图标装到桌面。
+
+iOS 只认 HTTPS + 受信任证书，所以**必须有服务器**（自签证书不行）。
+上传接口选的是**裸 PUT**：请求体就是文件本身，不做 multipart 拼装 ——
+App 端可以直接流式上传（有原生进度、不占内存），服务端也只需要
+把 `php://input` 落盘，不解析表单。
+
+**服务端一次性配置**
+
+1. 把 `Server/lcsign-upload.php` 放到网站根目录，改掉文件里的 `TOKEN`
+   （例如 `https://example.com/lcsign-upload.php`）。
+2. nginx 放开发包体和超时：
+
+   ```nginx
+   client_max_body_size 512m;
+   fastcgi_read_timeout 600s;
+   ```
+
+3. 确认 `/lcsign/` 能直接访问（不要被重写到 CMS 前台）。
+   `.plist` 建议映射为 `application/xml`（`types { application/xml plist; }`）。
+4. App → 签名记录 → **安装到桌面** → 填「上传地址 / 公开访问前缀 / 令牌」
+   → **测试连接** → **保存并安装**。
+
+「测试连接」会传一个几字节的探针文件，再按公开地址读回来，
+一次验证**写权限**（令牌、目录、PHP）和**读能力**（静态访问、证书链）——
+这两件事坏任何一个安装都会失败，但报错时机完全不同。
+
+**几个容易踩的点**
+
+- 清单里的 `bundle-identifier` 取的是**产物 Info.plist**，不是界面上填的值。
+  固定 App ID 的描述文件会改写包名，用错值系统会直接拒绝安装。
+- `bundle-version` 填 `CFBundleVersion`（构建号），不是 `1.0.x`。
+- 每次安装都上传到新的 `lcsign/<日期>/<uuid>/` 目录：iOS 会缓存清单，
+  复用同一个地址可能拿到上一次的清单。
+- 上传采用「临时文件 + rename」，手机上不会下载到半个包。
+- 签名身份仍要是可用的：内置 HSBC 证书已被吊销，用它的包传上去也装不上。
+
 ---
 
 ## 4. 目录结构
@@ -331,6 +373,8 @@ plist 树形编辑器、备份格式、插件系统、灵动岛、自更新。
 ```
 LCSignClone/
 ├── project.yml                       XcodeGen 工程定义
+├── Server/
+│   └── lcsign-upload.php             OTA 上传接口（PUT 裸文件，部署到网站根目录）
 ├── Scripts/
 │   ├── 00_check_env.sh               环境检查
 │   ├── 10_build_zsign.sh             编译 zsign 静态库（真机 + 模拟器）
@@ -347,6 +391,7 @@ LCSignClone/
 │       ├── IPAArchiveTests.swift     含 zip slip 防护
 │       ├── ZipWriterTests.swift      打包往返：多块文件 / 空文件 / 中文名 / 进度
 │       ├── AppSourceTests.swift      软件源容错解析（多种字段写法）
+│       ├── InstallManifestTests.swift OTA 清单字段 + itms-services 链接
 │       └── EngineSelfTestTests.swift 真跑一遍 ad-hoc 签名
 └── Sources/
     ├── LCSignClone/                  UI 层（iOS App target）
@@ -354,9 +399,11 @@ LCSignClone/
     │   ├── Info.plist
     │   ├── DesignSystem.swift        设计令牌（颜色/间距/字号）+ 通用组件
     │   ├── AppModel.swift            界面状态与签名任务编排
+    │   ├── InstallSettingsStore.swift 安装服务器配置（令牌进钥匙串）
     │   └── Views/
     │       ├── HomeView.swift        首页：状态板 + 主操作 + 软件源 + 签名记录
     │       ├── SignSheet.swift       重签名页
+    │       ├── InstallSheet.swift    安装到桌面：服务器配置 + 上传 + 拉起系统安装器
     │       ├── CertificateRow.swift  证书行 / 证书库 / 导入证书
     │       ├── SourcesView.swift     软件源列表 / 添加 / 刷新 / 删除
     │       ├── SourceAppDetailView.swift 源内应用详情 + 下载并签名
@@ -368,7 +415,9 @@ LCSignClone/
         ├── CertificateStore.swift    证书库 + 钥匙串
         ├── SigningCertificate.swift  证书模型（含有效期）
         ├── ProvisioningProfile.swift 描述文件解析 + 授权比对
-        ├── IPAArchive.swift          IPA 解包/打包
+        ├── IPAArchive.swift          IPA 解包/打包 + 只读 Info.plist
+        ├── InstallManifest.swift     OTA 清单生成 + itms-services 链接
+        ├── InstallService.swift      上传 IPA / 清单（PUT、进度、地址解析）
         ├── ZipWriter.swift           手写的 O(n) ZIP 写入器（打包用）
         ├── AppSource.swift           软件源模型 + 同义字段容错解析
         ├── SourceService.swift       HTTPS 拉清单 / 下载 IPA（进度、ZIP 校验）
@@ -418,12 +467,17 @@ iOS App 无法把文件写进 `/Applications`，也无法 fork 子进程。
 所以「签名」必须在 App 进程内用静态库完成（这也正是 zsign 要编成静态库的原因），
 而「安装」必须交给系统机制或第三方工具。
 
-### 6.3 itms-services 走不通
+### 6.3 itms-services 必须走 HTTPS
 
-`itms-services://` OTA 安装要求 **HTTPS + 受信任证书**，
-自签证书 iOS 不认。所以原版的 `LocalIPAServer` 实际用途是
-「局域网内给其他设备下载 IPA」，而不是直接触发安装。
-阶段 1 直接砍掉，导出 IPA 让用户自己导入 AltStore/TrollStore 更实在。
+`itms-services://` OTA 安装要求 **HTTPS + 受信任证书**。自签证书与
+`http://` 地址都会被系统直接拒绝，且不给任何提示 —— 原版的
+`LocalIPAServer`（本地 HTTP 服务）因此只能用来「下载 IPA」，
+触发不了安装，阶段 1 砍掉了。
+
+现在改走用户自己的 HTTPS 服务器：App 端只负责上传与生成清单，
+见 3.4。仍然不做「App 内置自签 TLS 的本地服务」：那条路要么让用户
+手动信任证书，要么依赖公共 CA 指向 127.0.0.1，两者都不如一台
+现成服务器可靠。
 
 ### 6.4 大文件内存
 

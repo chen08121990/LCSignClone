@@ -92,6 +92,10 @@ targets:
     platform: iOS
     sources:
       - path: Sources/LCSignClone
+      # 服务器上传脚本作为资源打进来：用户可以在安装设置里一键复制，
+      # 贴到自己的网站根目录即可，不必回仓库翻文件。
+      - path: Server/lcsign-upload.php
+        buildPhase: resources
     dependencies:
       - target: LCSignCore
       # ---- OpenSSL 必须在这里再声明一次 ----
@@ -132,7 +136,7 @@ targets:
       properties:
         CFBundleDisplayName: LCSign
         CFBundleName: LCSignClone
-        CFBundleShortVersionString: "1.0.6"
+        CFBundleShortVersionString: "1.0.7"
         # 每次出可安装的包都往上加 1，方便在设备上和崩溃日志里区分版本
         # 1 = 首个可安装包
         # 2 = 修掉 OpenSSL 动态框架没嵌进包导致的启动闪退
@@ -144,7 +148,8 @@ targets:
         # 8 = 固定 App ID 的描述文件自动改写包名，不再报「无法覆盖」
         # 9 = 文件选择器不再按 ipa UTI 过滤（iOS 上 .ipa 会被全部置灰）
         # 10 = 选 IPA 改用 UIDocumentPicker（不限类型、直接拷贝），首页显示版本号
-        CFBundleVersion: "10"
+        # 11 = 签名后一键安装到桌面：上传到自建服务器 + itms-services
+        CFBundleVersion: "11"
         UILaunchScreen: {}
         UIRequiredDeviceCapabilities:
           - arm64

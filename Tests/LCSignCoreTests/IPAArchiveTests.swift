@@ -27,6 +27,7 @@ final class IPAArchiveTests: XCTestCase {
         XCTAssertEqual(contents.bundleID, "com.example.demo")
         XCTAssertEqual(contents.executableName, "Demo")
         XCTAssertEqual(contents.bundleVersion, "2.3")
+        XCTAssertEqual(contents.bundleBuild, "7")
         XCTAssertEqual(contents.displayName, "演示")
 
         // 空目录必须活下来：真实 .app 里这种目录不少，丢了会导致签名产物结构不完整
@@ -36,6 +37,39 @@ final class IPAArchiveTests: XCTestCase {
                                                     isDirectory: &isDirectory),
                       "空目录在打包/解包往返中丢失了")
         XCTAssertTrue(isDirectory.boolValue)
+    }
+
+    // MARK: - 只读清单
+
+    func testReadBundleInfoWithoutExtracting() throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let app = try makeAppBundle(in: root,
+                                    name: "Probe",
+                                    bundleID: "com.example.probe",
+                                    displayName: "探针")
+        let ipa = root.appendingPathComponent("Probe.ipa")
+        try IPAArchive.package(appBundle: app, to: ipa)
+
+        let info = try IPAArchive.readBundleInfo(ipa: ipa)
+
+        XCTAssertEqual(info.bundleID, "com.example.probe")
+        XCTAssertEqual(info.bundleVersion, "2.3")
+        // 构建号必须单独取：OTA 清单要的是 CFBundleVersion
+        XCTAssertEqual(info.bundleBuild, "7")
+        XCTAssertEqual(info.displayName, "探针")
+        XCTAssertEqual(info.executableName, "Probe")
+    }
+
+    func testReadBundleInfoRejectsBrokenArchive() throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let broken = root.appendingPathComponent("broken.ipa")
+        try Data("this is not a zip".utf8).write(to: broken)
+
+        XCTAssertThrowsError(try IPAArchive.readBundleInfo(ipa: broken))
     }
 
     func testExtractedPayloadKeepsIPALayout() throws {

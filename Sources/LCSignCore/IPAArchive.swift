@@ -14,7 +14,22 @@ public enum IPAArchive {
     public struct Contents: Sendable {
         public let appBundle: URL
         public let bundleID: String
+        /// 面向用户的版本号（CFBundleShortVersionString）
         public let bundleVersion: String
+        /// 构建号（CFBundleVersion）。OTA 安装清单要的是这个，不是上面的版本号。
+        public let bundleBuild: String
+        public let displayName: String
+        public let executableName: String
+    }
+
+    /// 只从归档里读 Info.plist 得到的清单信息。
+    ///
+    /// 与 ``Contents`` 的区别是不解包、不校验可执行文件 —— 安装到桌面时
+    /// 只需要包名与版本号，为了拿这两项把几百 MB 的包重新解一遍没有必要。
+    public struct BundleInfo: Sendable {
+        public let bundleID: String
+        public let bundleVersion: String
+        public let bundleBuild: String
         public let displayName: String
         public let executableName: String
     }
@@ -90,6 +105,64 @@ public enum IPAArchive {
         return try inspect(directory: directory, extractedFileCount: extractedFiles)
     }
 
+    /// 不解包，直接读归档里的 `Payload/*.app/Info.plist`。
+    ///
+    /// 安装到桌面只需要 bundle id 与版本号。ZIPFoundation 支持按条目流式解压，
+    /// 读一个几 KB 的 plist 不会碰其余内容 —— 对一个 100 MB 的包来说，
+    /// 这比「解包再 inspect」快两个数量级。
+    public static func readBundleInfo(ipa: URL) throws -> BundleInfo {
+        guard let archive = try? Archive(url: ipa, accessMode: .read, pathEncoding: nil) else {
+            throw SigningError.archiveUnreadable(
+                "\(ipa.lastPathComponent) 不是合法的 zip，或文件已被截断。"
+            )
+        }
+
+        // 只认 Payload/<名字>.app/Info.plist，不认嵌套框架里的同名文件
+        guard let entry = archive.first(where: { isAppInfoPlist($0.path) }) else {
+            throw SigningError.noAppBundleInArchive(
+                "归档里找不到 Payload/*.app/Info.plist。"
+            )
+        }
+
+        var data = Data()
+        do {
+            _ = try archive.extract(entry) { data.append($0) }
+        } catch {
+            throw SigningError.noAppBundleInArchive(
+                "读取 Info.plist 失败：\(error.localizedDescription)"
+            )
+        }
+
+        guard let info = parseInfo(data) else {
+            throw SigningError.noAppBundleInArchive("Info.plist 不是合法的 plist 字典。")
+        }
+        return info
+    }
+
+    private static func isAppInfoPlist(_ path: String) -> Bool {
+        let parts = path.split(separator: "/", omittingEmptySubsequences: true)
+        guard parts.count == 3 else { return false }
+        return parts[0] == "Payload"
+            && parts[1].hasSuffix(".app")
+            && parts[2] == "Info.plist"
+    }
+
+    private static func parseInfo(_ data: Data) -> BundleInfo? {
+        guard let info = (try? PropertyListSerialization.propertyList(
+            from: data, options: [], format: nil
+        )) as? [String: Any] else { return nil }
+
+        return BundleInfo(
+            bundleID: info["CFBundleIdentifier"] as? String ?? "",
+            bundleVersion: info["CFBundleShortVersionString"] as? String ?? "1.0",
+            bundleBuild: info["CFBundleVersion"] as? String ?? "",
+            displayName: (info["CFBundleDisplayName"] as? String)
+                      ?? (info["CFBundleName"] as? String)
+                      ?? "",
+            executableName: info["CFBundleExecutable"] as? String ?? ""
+        )
+    }
+
     /// 在已解包的目录里定位 .app 并读取清单
     public static func inspect(directory: URL) throws -> Contents {
         try inspect(directory: directory, extractedFileCount: nil)
@@ -129,16 +202,13 @@ public enum IPAArchive {
                 "\(app.lastPathComponent) 里读不到 Info.plist。" + listing(directory: app)
             )
         }
-        guard let info = (try? PropertyListSerialization.propertyList(from: infoData,
-                                                                     options: [],
-                                                                     format: nil))
-                            as? [String: Any] else {
+        guard let info = parseInfo(infoData) else {
             throw SigningError.noAppBundleInArchive(
                 "\(app.lastPathComponent)/Info.plist 不是合法的 plist 字典。"
             )
         }
 
-        let executable = info["CFBundleExecutable"] as? String ?? ""
+        let executable = info.executableName
         guard !executable.isEmpty,
               fm.fileExists(atPath: app.appendingPathComponent(executable).path) else {
             throw SigningError.executableMissing(executable.isEmpty ? "(未知)" : executable)
@@ -146,11 +216,12 @@ public enum IPAArchive {
 
         return Contents(
             appBundle: app,
-            bundleID: info["CFBundleIdentifier"] as? String ?? "",
-            bundleVersion: info["CFBundleShortVersionString"] as? String ?? "1.0",
-            displayName: (info["CFBundleDisplayName"] as? String)
-                      ?? (info["CFBundleName"] as? String)
-                      ?? app.deletingPathExtension().lastPathComponent,
+            bundleID: info.bundleID,
+            bundleVersion: info.bundleVersion,
+            bundleBuild: info.bundleBuild,
+            displayName: info.displayName.isEmpty
+                ? app.deletingPathExtension().lastPathComponent
+                : info.displayName,
             executableName: executable
         )
     }

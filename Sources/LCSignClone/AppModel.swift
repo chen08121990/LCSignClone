@@ -91,6 +91,10 @@ final class AppModel: ObservableObject {
     /// 从其他 App 通过分享菜单投递进来的 IPA，等用户在签名界面确认
     @Published var pendingIPA: URL?
 
+    /// 签名成功后要自动打开的安装页。仅当用户在安装设置里开了自动弹出、
+    /// 且服务器已经配好时才会有值 —— 没配服务器就弹出来只会变成打扰。
+    @Published var autoInstallTask: SigningTask?
+
     /// 上次用过的证书，下次打开签名页默认选中它
     @Published var preferredCertificateID: UUID?
 
@@ -323,6 +327,13 @@ final class AppModel: ObservableObject {
             }
 
             setPreferredCertificate(certificate.id)
+
+            let installSettings = InstallSettingsStore.shared.settings
+            if installSettings.autoInstallAfterSigning,
+               installSettings.isConfigured,
+               let finished = tasks.first(where: { $0.id == taskID }) {
+                autoInstallTask = finished
+            }
         } catch {
             let message = (error as? LocalizedError)?.errorDescription
                        ?? error.localizedDescription

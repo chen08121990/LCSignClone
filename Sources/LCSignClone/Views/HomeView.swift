@@ -12,9 +12,19 @@ struct HomeView: View {
     /// 叠加多个 sheet 的处理并不一致，实测只有最后一个能稳定弹出来。
     @State private var activeSheet: ActiveSheet?
 
-    private enum ActiveSheet: String, Identifiable {
+    private enum ActiveSheet: Identifiable {
         case sign, certificates, diagnostics, sources
-        var id: String { rawValue }
+        case install(SigningTask)
+
+        var id: String {
+            switch self {
+            case .sign:         return "sign"
+            case .certificates: return "certificates"
+            case .diagnostics:  return "diagnostics"
+            case .sources:      return "sources"
+            case .install(let task): return "install-\(task.id.uuidString)"
+            }
+        }
     }
 
     var body: some View {
@@ -24,12 +34,22 @@ struct HomeView: View {
                 await model.refreshCertificates()
                 await model.loadSources()
             }
+            .onChange(of: model.autoInstallTask?.id) { _ in
+                guard let task = model.autoInstallTask else { return }
+                model.autoInstallTask = nil
+                // 签名页还在关闭动画里时叠一个新 sheet 会被系统忽略，
+                // 等它退场再弹安装页。
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    activeSheet = .install(task)
+                }
+            }
             .sheet(item: $activeSheet) { sheet in
                 switch sheet {
                 case .sign:         SignSheet()
                 case .certificates: CertificateListView()
                 case .diagnostics:  DiagnosticsView()
                 case .sources:      SourcesView()
+                case .install(let task): InstallSheet(task: task)
                 }
             }
             .alert(
@@ -285,7 +305,7 @@ struct HomeView: View {
                             Text("还没有签名记录")
                                 .font(Typo.body)
                                 .foregroundColor(.primary)
-                            Text("签名完成后，产物会出现在这里，可以直接导出。")
+                            Text("签名完成后，产物会出现在这里，可以直接安装到桌面或导出。")
                                 .font(Typo.caption)
                                 .foregroundColor(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -310,6 +330,7 @@ struct HomeView: View {
                 ForEach(model.tasks) { task in
                     TaskCard(
                         task: task,
+                        onInstall: { activeSheet = .install(task) },
                         onRetry: { Task { await model.retry(task) } },
                         onRemove: {
                             withAnimation(.easeInOut(duration: 0.2)) {
@@ -616,6 +637,7 @@ struct CertificateCard: View {
 struct TaskCard: View {
 
     let task: SigningTask
+    let onInstall: () -> Void
     let onRetry: () -> Void
     let onRemove: () -> Void
 
@@ -735,12 +757,21 @@ struct TaskCard: View {
             }
 
             if task.outputURL != nil {
-                Button {
-                    showingShare = true
-                } label: {
-                    Label("导出 IPA", systemImage: "square.and.arrow.up")
+                HStack(spacing: Metric.Space.s) {
+                    Button {
+                        onInstall()
+                    } label: {
+                        Label("安装到桌面", systemImage: "arrow.down.app")
+                    }
+                    .buttonStyle(PrimaryActionStyle(compact: true))
+
+                    Button {
+                        showingShare = true
+                    } label: {
+                        Label("导出 IPA", systemImage: "square.and.arrow.up")
+                    }
+                    .buttonStyle(GhostActionStyle(compact: true))
                 }
-                .buttonStyle(PrimaryActionStyle(compact: true))
             }
         }
     }
