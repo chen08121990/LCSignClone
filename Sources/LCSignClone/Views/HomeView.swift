@@ -323,13 +323,28 @@ struct HomeView: View {
     }
 
     private var footer: some View {
-        Text("签名产物保存在「文件」App → 我的 iPhone → LCSign → Signed 目录下，"
-           + "也可以在任务卡上直接导出。")
-            .font(Typo.micro)
-            .foregroundColor(.secondary)
-            .multilineTextAlignment(.center)
-            .padding(.horizontal, Metric.Space.s)
-            .padding(.top, Metric.Space.s)
+        VStack(spacing: Metric.Space.xs) {
+            Text("签名产物保存在「文件」App → 我的 iPhone → LCSign → Signed 目录下，"
+               + "也可以在任务卡上直接导出。")
+                .font(Typo.micro)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+
+            Text("版本 \(appVersion) (\(appBuild))")
+                .font(Typo.micro)
+                .fontWeight(.regular)
+                .foregroundColor(.secondary.opacity(0.7))
+        }
+        .padding(.horizontal, Metric.Space.s)
+        .padding(.top, Metric.Space.s)
+    }
+
+    private var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+    }
+
+    private var appBuild: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
     }
 }
 

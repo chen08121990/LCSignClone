@@ -1,6 +1,5 @@
 import LCSignCore
 import SwiftUI
-import UniformTypeIdentifiers
 
 /// 重签名页。
 ///
@@ -51,27 +50,16 @@ struct SignSheet: View {
                 }
             }
             .safeAreaInset(edge: .bottom) { actionBar }
-            .fileImporter(
-                isPresented: $showingIPAPicker,
-                // 不要按 ipa 的 UTI 过滤：iOS 没有系统级的 ipa 类型，
-                // 从别的 App 存进来的 .ipa 会被判成动态类型，文件选择器会把它们全部置灰。
-                // 放开成 .data，选完再按扩展名拦。
-                allowedContentTypes: [.data],
-                allowsMultipleSelection: false
-            ) { result in
-                switch result {
-                case .success(let urls):
-                    guard let url = urls.first else { return }
+            .sheet(isPresented: $showingIPAPicker) {
+                IPADocumentPicker { url in
+                    showingIPAPicker = false
                     guard url.pathExtension.lowercased() == "ipa" else {
                         pickerError = "只能选 .ipa 文件，收到的是 .\(url.pathExtension)。"
                         return
                     }
                     selectedIPA = url
-                case .failure(let error):
-                    // 用户取消也可能走到这里，那不是错误，不弹提示
-                    if (error as NSError).code != NSUserCancelledError {
-                        pickerError = error.localizedDescription
-                    }
+                } onCancel: {
+                    showingIPAPicker = false
                 }
             }
             .alert("无法选择文件", isPresented: isShowingPickerError) {

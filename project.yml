@@ -132,7 +132,7 @@ targets:
       properties:
         CFBundleDisplayName: LCSign
         CFBundleName: LCSignClone
-        CFBundleShortVersionString: "1.0.5"
+        CFBundleShortVersionString: "1.0.6"
         # 每次出可安装的包都往上加 1，方便在设备上和崩溃日志里区分版本
         # 1 = 首个可安装包
         # 2 = 修掉 OpenSSL 动态框架没嵌进包导致的启动闪退
@@ -143,7 +143,8 @@ targets:
         # 7 = 内置 HSBC 企业证书，首次启动自动导入，无需手动导入
         # 8 = 固定 App ID 的描述文件自动改写包名，不再报「无法覆盖」
         # 9 = 文件选择器不再按 ipa UTI 过滤（iOS 上 .ipa 会被全部置灰）
-        CFBundleVersion: "9"
+        # 10 = 选 IPA 改用 UIDocumentPicker（不限类型、直接拷贝），首页显示版本号
+        CFBundleVersion: "10"
         UILaunchScreen: {}
         UIRequiredDeviceCapabilities:
           - arm64
