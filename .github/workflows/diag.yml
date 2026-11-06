@@ -5,3 +5,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: echo ok
+  mac14:
+    runs-on: macos-14
+    steps:
+      - run: echo mac14 ok
+  mac15:
+    runs-on: macos-15
+    steps:
+      - run: echo mac15 ok
