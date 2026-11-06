@@ -307,6 +307,20 @@ plist 树形编辑器、备份格式、插件系统、灵动岛、自更新。
 - 下载地址常是 302 跳转到签名 CDN，`URLSession` 会自动跟随；源里的 `lock` / `unlockURL` /
   `payURL` 属于商业兑换逻辑，这里不解析也不展示。
 
+### 3.3 内置证书
+
+包内预置了一份签名身份（`Sources/LCSignClone/BuiltIn/`），首次启动由
+`AppModel.importBuiltInCertificateIfNeeded()` 导入证书库并设为默认证书，
+装好就能直接签名，不必再走「导入证书」。
+
+- 只做一次：导入成功才写 `didImportBuiltInCertificate`，用户主动删掉不会再加回来。
+- 覆盖安装后标记丢失时按 Team ID 去重，不会重复导入。
+- 导入失败会清空标记、下次启动重试，原因显示在证书库页顶部。
+
+> **这份内置身份已被 Apple 吊销**（OCSP `revoked`，`certificateHold`）。
+> 用它签出来的 App 无法安装或启动。另外私钥和密码随 IPA 一起分发，
+> 等于公开了这张证书 —— 需要可用的包请自行导入自己的证书。
+
 ---
 
 ## 4. 目录结构

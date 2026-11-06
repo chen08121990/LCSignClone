@@ -189,6 +189,9 @@ struct CertificateListView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: Metric.Space.l) {
+                    if let failure = model.builtInCertificateError {
+                        builtInFailure(failure)
+                    }
                     if model.certificates.isEmpty {
                         emptyState
                     } else {
@@ -260,6 +263,25 @@ struct CertificateListView: View {
                     Label("导入证书", systemImage: "plus")
                 }
                 .buttonStyle(PrimaryActionStyle(compact: true))
+            }
+        }
+    }
+
+    /// 内置证书导入失败时把原因摆出来，而不是让用户对着空列表猜
+    private func builtInFailure(_ message: String) -> some View {
+        Card {
+            HStack(alignment: .top, spacing: Metric.Space.m) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(Brand.danger)
+                VStack(alignment: .leading, spacing: Metric.Space.xs) {
+                    Text("内置证书导入失败")
+                        .font(Typo.body)
+                        .fontWeight(.semibold)
+                    Text(message)
+                        .font(Typo.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }

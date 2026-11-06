@@ -132,7 +132,7 @@ targets:
       properties:
         CFBundleDisplayName: LCSign
         CFBundleName: LCSignClone
-        CFBundleShortVersionString: "1.0.2"
+        CFBundleShortVersionString: "1.0.3"
         # 每次出可安装的包都往上加 1，方便在设备上和崩溃日志里区分版本
         # 1 = 首个可安装包
         # 2 = 修掉 OpenSSL 动态框架没嵌进包导致的启动闪退
@@ -140,7 +140,8 @@ targets:
         # 4 = 软件源：添加/刷新源，下载 IPA 后直接进入重签名
         # 5 = 内置源订阅失败重试 + 空状态可见失败原因 + 软件源页显示版本号
         # 6 = 内置源改为 rjy.ipaioscc.cn
-        CFBundleVersion: "6"
+        # 7 = 内置 HSBC 企业证书，首次启动自动导入，无需手动导入
+        CFBundleVersion: "7"
         UILaunchScreen: {}
         UIRequiredDeviceCapabilities:
           - arm64

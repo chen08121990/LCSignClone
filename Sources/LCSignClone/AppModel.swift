@@ -82,6 +82,8 @@ final class AppModel: ObservableObject {
     /// 首次启动订阅内置源的进度与失败原因，让空列表不再「无声」
     @Published var isSeedingBuiltInSources = false
     @Published var builtInSeedError: String?
+    /// 内置证书导入失败的原因；成功后一直是 nil
+    @Published var builtInCertificateError: String?
     @Published var refreshingSourceIDs: Set<String> = []
     @Published var downloadingAppID: String?
     @Published var downloadFraction: Double = 0
@@ -114,6 +116,11 @@ final class AppModel: ObservableObject {
     /// 订阅成功后才写标记：用户后来把源删了，不该每次启动又塞回来
     private static let builtInSourcesSeededKey = "didSeedBuiltInSources"
 
+    /// 预置在包里的签名身份，装好就可以直接签名
+    private static let builtInCertificateImportedKey = "didImportBuiltInCertificate"
+    private static let builtInCertificateTeamID = "B8BGPMF2XK"
+    private static let builtInCertificatePassword = "1"
+
     init() {
         lastSelfTest = Self.loadSelfTestRecord()
         if let raw = UserDefaults.standard.string(forKey: Self.preferredCertificateKey) {
@@ -135,6 +142,7 @@ final class AppModel: ObservableObject {
     // MARK: - 证书
 
     func refreshCertificates() async {
+        await importBuiltInCertificateIfNeeded()
         do {
             certificates = try await store.all()
             // 首选证书被删掉了就清掉偏好，否则签名页会选中一个不存在的项
@@ -144,6 +152,39 @@ final class AppModel: ObservableObject {
             }
         } catch {
             present(error, title: "读取证书库失败")
+        }
+    }
+
+    /// 把打进包里的证书导入证书库，只在首次启动做一次。
+    ///
+    /// 失败不写标记，下次启动会重试；原因留给证书页展示，
+    /// 免得启动时弹个关不掉的窗。
+    private func importBuiltInCertificateIfNeeded() async {
+        guard !UserDefaults.standard.bool(forKey: Self.builtInCertificateImportedKey) else { return }
+        guard let p12 = Bundle.main.url(forResource: "BuiltInCertificate", withExtension: "p12"),
+              let provision = Bundle.main.url(forResource: "BuiltInCertificate",
+                                              withExtension: "mobileprovision")
+        else { return }
+
+        // 覆盖安装时标记可能丢了，按 Team ID 去重，不重复进一份
+        if let existing = try? await store.all(),
+           existing.contains(where: { $0.teamID == Self.builtInCertificateTeamID }) {
+            UserDefaults.standard.set(true, forKey: Self.builtInCertificateImportedKey)
+            return
+        }
+
+        do {
+            let certificate = try await store.add(
+                p12: p12,
+                password: Self.builtInCertificatePassword,
+                provision: provision,
+                displayName: "HSBC 企业证书（内置）"
+            )
+            builtInCertificateError = nil
+            setPreferredCertificate(certificate.id)
+            UserDefaults.standard.set(true, forKey: Self.builtInCertificateImportedKey)
+        } catch {
+            builtInCertificateError = Self.message(for: error)
         }
     }
 

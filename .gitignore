@@ -18,6 +18,10 @@ test.log
 cert.p12
 profile.mobileprovision
 
+# 例外：内置身份是刻意随包分发的，见 README 3.3
+!Sources/LCSignClone/BuiltIn/BuiltInCertificate.p12
+!Sources/LCSignClone/BuiltIn/BuiltInCertificate.mobileprovision
+
 # 系统
 .DS_Store
 Thumbs.db
