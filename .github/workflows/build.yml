@@ -7,13 +7,14 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.run_id }}
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     name: 构建 iOS App
-    runs-on: macos-14
+    # macos-14 镜像已被 GitHub 下线：任务会在 1 秒内被直接取消（没有日志）
+    runs-on: macos-15
     timeout-minutes: 45
 
     steps:
