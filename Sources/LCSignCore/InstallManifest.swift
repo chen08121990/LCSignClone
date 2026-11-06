@@ -47,16 +47,18 @@ public enum InstallManifest {
 
     /// `itms-services://?action=download-manifest&url=<manifest>`
     public static func installationURL(manifestURL: URL) -> URL? {
-        var components = URLComponents()
-        components.scheme = "itms-services"
-        components.queryItems = [
-            URLQueryItem(name: "action", value: "download-manifest"),
-            URLQueryItem(name: "url", value: manifestURL.absoluteString)
-        ]
-        guard let query = components.percentEncodedQuery else { return nil }
+        // 不用 URLComponents.queryItems：它按 RFC 3986 只编码「查询串里不允许」
+        // 的字符，而 `&`、`=`、`+` 都属于子分隔符，会被原样留下 ——
+        // 清单地址自己带查询串时，外层查询会被从 `&` 处截断。
+        var allowed = CharacterSet.urlQueryAllowed
+        allowed.remove(charactersIn: "&?=#+")
+        guard let encoded = manifestURL.absoluteString
+            .addingPercentEncoding(withAllowedCharacters: allowed) else {
+            return nil
+        }
 
         // 没有 host 时 URLComponents 会省略 `//`，而 iOS 只认
         // `itms-services://?` 这个完整形式，少两道斜杠就静默失败。
-        return URL(string: "itms-services://?\(query)")
+        return URL(string: "itms-services://?action=download-manifest&url=\(encoded)")
     }
 }
